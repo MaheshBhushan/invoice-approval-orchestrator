@@ -15,7 +15,7 @@ jobs:
       - name: Install dependencies
         run: python -m pip install -r services/requirements.txt
       - name: Python syntax and unit tests
-        run: python -m compileall -q services tests && pytest -q tests/test_classifier.py
+        run: PYTHONPATH=services python -m compileall -q services tests && PYTHONPATH=services pytest -q tests/test_classifier.py
       - name: Validate BPMN XML
         run: python -c "import xml.etree.ElementTree as ET; ET.parse('bpmn/invoice-approval.bpmn')"
       - name: Validate Compose configuration
