@@ -1,4 +1,4 @@
-name: invoice-workflow-agent
+name: invoice-approval-orchestrator
 
 services:
   camunda-data-init:

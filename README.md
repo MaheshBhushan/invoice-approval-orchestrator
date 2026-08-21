@@ -1,4 +1,4 @@
-# Invoice Workflow Agent
+# Invoice Approval Orchestrator
 
 An executable invoice-processing reference system combining **BPMN 2.0**, **Workflow Automation**, Camunda 8, Python, SQL, and an explainable LangGraph **KI-Agenten** workflow. It extracts invoice data, validates suppliers and purchase orders, classifies discrepancies, sends uncertain cases to a human, updates a finance system exactly once, and records an audit trail.
 
