@@ -1,0 +1,24 @@
+{
+  "run_id": "4c710baa",
+  "generated_at": "2026-08-21T12:34:14Z",
+  "invoice_count": 100,
+  "wall_clock_seconds": 12.357,
+  "case_distribution": {
+    "ambiguous_discrepancy": 10,
+    "amount_mismatch": 20,
+    "no_discrepancy": 70
+  },
+  "metrics": {
+    "completed": 100,
+    "latency_ms": {
+      "mean": 5611.25,
+      "p50": 6795.62,
+      "p95": 7603.66
+    },
+    "straight_through_rate": 0.9,
+    "human_review_rate": 0.1,
+    "duplicates_prevented": 10,
+    "retries": 0,
+    "classification_accuracy": 1.0
+  }
+}

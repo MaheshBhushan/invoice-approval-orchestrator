@@ -1,0 +1,11 @@
+{
+  "name": "Human review notification webhook",
+  "nodes": [
+    {"parameters":{"httpMethod":"POST","path":"human-review","responseMode":"onReceived"},"id":"1","name":"Human review required","type":"n8n-nodes-base.webhook","typeVersion":2,"position":[0,0],"webhookId":"human-review"},
+    {"parameters":{"assignments":{"assignments":[{"id":"1","name":"notification","value":"=Human approval required for invoice {{ $json.body.invoice_id }}: {{ $json.body.decision.explanation }} (confidence {{ $json.body.decision.confidence }})","type":"string"}]},"options":{}},"id":"2","name":"Build notification","type":"n8n-nodes-base.set","typeVersion":3.4,"position":[240,0]}
+  ],
+  "connections":{"Human review required":{"main":[[{"node":"Build notification","type":"main","index":0}]]}},
+  "active": true,
+  "settings": {"executionOrder":"v1"},
+  "versionId": "1"
+}

@@ -1,0 +1,15 @@
+{
+  "id": "invoice-human-approval",
+  "components": [
+    {"type":"text","key":"invoice_id","label":"Invoice ID","readonly":true},
+    {"type":"text","key":"supplier_code","label":"Supplier","readonly":true},
+    {"type":"text","key":"purchase_order_number","label":"Purchase order","readonly":true},
+    {"type":"textarea","key":"agent_evidence","label":"Discrepancy evidence","readonly":true},
+    {"type":"textarea","key":"agent_explanation","label":"Agent explanation","readonly":true},
+    {"type":"number","key":"agent_confidence","label":"Agent confidence","readonly":true},
+    {"type":"radio","key":"human_decision","label":"Decision","values":[{"label":"Approve","value":"approved"},{"label":"Reject","value":"rejected"}],"validate":{"required":true}},
+    {"type":"text","key":"reviewer_id","label":"Reviewer ID","validate":{"required":true}},
+    {"type":"textarea","key":"rejection_reason","label":"Rejection reason"}
+  ],
+  "type": "default"
+}

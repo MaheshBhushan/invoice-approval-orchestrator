@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_InvoiceApproval" targetNamespace="https://example.com/invoice-workflow" exporter="Camunda Modeler" exporterVersion="5.40.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.9.0">
+  <bpmn:error id="Error_ValidationFailed" name="Supplier or purchase order validation failed" errorCode="VALIDATION_FAILED" />
+  <bpmn:message id="Message_InvoiceReceived" name="Invoice received" />
+  <bpmn:process id="invoice-approval" name="Invoice Approval" isExecutable="true">
+    <bpmn:documentation>The caller MUST provide invoice_id as a top-level UUID string. It is the process business key and the idempotency/audit correlation key. Business failures take explicit BPMN rejection paths; exhausted technical retries remain visible as Camunda incidents.</bpmn:documentation>
+    <bpmn:startEvent id="Start_InvoiceReceived" name="Invoice received">
+      <bpmn:outgoing>Flow_Start_Extract</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:serviceTask id="Task_Extract" name="Extract structured fields">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="invoice.extract" retries="5" />
+        <zeebe:taskHeaders>
+          <zeebe:header key="retryBackoff" value="PT10S" />
+        </zeebe:taskHeaders>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_Start_Extract</bpmn:incoming>
+      <bpmn:outgoing>Flow_Extract_Validate</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="Task_Validate" name="Validate supplier and purchase order">
+      <bpmn:documentation>A worker throws BPMN error VALIDATION_FAILED for non-retryable business validation failures and fails the job for retryable technical errors.</bpmn:documentation>
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="invoice.validate" retries="5" />
+        <zeebe:taskHeaders>
+          <zeebe:header key="retryBackoff" value="PT10S" />
+        </zeebe:taskHeaders>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_Extract_Validate</bpmn:incoming>
+      <bpmn:outgoing>Flow_Validate_Classify</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:boundaryEvent id="Boundary_ValidationFailed" name="Non-retryable validation failure" attachedToRef="Task_Validate">
+      <bpmn:outgoing>Flow_ValidationFailed_Record</bpmn:outgoing>
+      <bpmn:errorEventDefinition id="ErrorEventDefinition_ValidationFailed" errorRef="Error_ValidationFailed" />
+    </bpmn:boundaryEvent>
+    <bpmn:serviceTask id="Task_Classify" name="AI agent classifies discrepancies">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="invoice.classify-discrepancy" retries="3" />
+        <zeebe:taskHeaders>
+          <zeebe:header key="retryBackoff" value="PT30S" />
+        </zeebe:taskHeaders>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_Validate_Classify</bpmn:incoming>
+      <bpmn:outgoing>Flow_Classify_Confidence</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="Gateway_LowConfidence" name="Low confidence?" default="Flow_Confidence_Auto">
+      <bpmn:incoming>Flow_Classify_Confidence</bpmn:incoming>
+      <bpmn:outgoing>Flow_Confidence_Human</bpmn:outgoing>
+      <bpmn:outgoing>Flow_Confidence_Auto</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:userTask id="Task_HumanApproval" name="Human approval">
+      <bpmn:extensionElements>
+        <zeebe:userTask />
+        <zeebe:assignmentDefinition candidateGroups="accounts-payable" />
+        <zeebe:taskSchedule dueDate="= now() + duration(&quot;PT24H&quot;)" />
+        <zeebe:formDefinition formId="invoice-human-approval" bindingType="deployment" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_Confidence_Human</bpmn:incoming>
+      <bpmn:outgoing>Flow_Human_Decision</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:boundaryEvent id="Boundary_HumanEscalation" name="Review overdue" cancelActivity="false" attachedToRef="Task_HumanApproval">
+      <bpmn:outgoing>Flow_Timer_Escalate</bpmn:outgoing>
+      <bpmn:timerEventDefinition id="TimerEventDefinition_HumanEscalation">
+        <bpmn:timeDuration xsi:type="bpmn:tFormalExpression" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">PT24H</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:boundaryEvent>
+    <bpmn:serviceTask id="Task_EscalateReview" name="Escalate overdue review">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="invoice.escalate-review" retries="5" />
+        <zeebe:taskHeaders>
+          <zeebe:header key="retryBackoff" value="PT1M" />
+        </zeebe:taskHeaders>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_Timer_Escalate</bpmn:incoming>
+      <bpmn:outgoing>Flow_Escalate_End</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="End_EscalationSent" name="Escalation sent">
+      <bpmn:incoming>Flow_Escalate_End</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:exclusiveGateway id="Gateway_HumanDecision" name="Approved?" default="Flow_Decision_Rejected">
+      <bpmn:incoming>Flow_Human_Decision</bpmn:incoming>
+      <bpmn:outgoing>Flow_Decision_Approved</bpmn:outgoing>
+      <bpmn:outgoing>Flow_Decision_Rejected</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="Task_RecordRejection" name="Record business rejection">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="invoice.record-rejection" retries="5" />
+        <zeebe:taskHeaders>
+          <zeebe:header key="retryBackoff" value="PT10S" />
+        </zeebe:taskHeaders>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_ValidationFailed_Record</bpmn:incoming>
+      <bpmn:incoming>Flow_Decision_Rejected</bpmn:incoming>
+      <bpmn:outgoing>Flow_Record_Rejected</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="End_BusinessRejected" name="Invoice rejected (business)">
+      <bpmn:incoming>Flow_Record_Rejected</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:serviceTask id="Task_UpdateFinance" name="Update finance system">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="invoice.update-finance" retries="5" />
+        <zeebe:taskHeaders>
+          <zeebe:header key="retryBackoff" value="PT30S" />
+          <zeebe:header key="idempotencyKeyVariable" value="invoice_id" />
+        </zeebe:taskHeaders>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_Confidence_Auto</bpmn:incoming>
+      <bpmn:incoming>Flow_Decision_Approved</bpmn:incoming>
+      <bpmn:outgoing>Flow_Finance_Metrics</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="Task_StoreMetrics" name="Store audit trail and process metrics">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="invoice.store-metrics" retries="5" />
+        <zeebe:taskHeaders>
+          <zeebe:header key="retryBackoff" value="PT10S" />
+        </zeebe:taskHeaders>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_Finance_Metrics</bpmn:incoming>
+      <bpmn:outgoing>Flow_Metrics_Completed</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="End_Completed" name="Invoice posted">
+      <bpmn:incoming>Flow_Metrics_Completed</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_Start_Extract" sourceRef="Start_InvoiceReceived" targetRef="Task_Extract" />
+    <bpmn:sequenceFlow id="Flow_Extract_Validate" sourceRef="Task_Extract" targetRef="Task_Validate" />
+    <bpmn:sequenceFlow id="Flow_Validate_Classify" sourceRef="Task_Validate" targetRef="Task_Classify" />
+    <bpmn:sequenceFlow id="Flow_ValidationFailed_Record" sourceRef="Boundary_ValidationFailed" targetRef="Task_RecordRejection" />
+    <bpmn:sequenceFlow id="Flow_Classify_Confidence" sourceRef="Task_Classify" targetRef="Gateway_LowConfidence" />
+    <bpmn:sequenceFlow id="Flow_Confidence_Human" name="Yes" sourceRef="Gateway_LowConfidence" targetRef="Task_HumanApproval">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">= agent_confidence &lt; confidence_threshold or agent_requires_human = true</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_Confidence_Auto" name="No" sourceRef="Gateway_LowConfidence" targetRef="Task_UpdateFinance" />
+    <bpmn:sequenceFlow id="Flow_Human_Decision" sourceRef="Task_HumanApproval" targetRef="Gateway_HumanDecision" />
+    <bpmn:sequenceFlow id="Flow_Timer_Escalate" sourceRef="Boundary_HumanEscalation" targetRef="Task_EscalateReview" />
+    <bpmn:sequenceFlow id="Flow_Escalate_End" sourceRef="Task_EscalateReview" targetRef="End_EscalationSent" />
+    <bpmn:sequenceFlow id="Flow_Decision_Approved" name="Yes" sourceRef="Gateway_HumanDecision" targetRef="Task_UpdateFinance">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">= human_decision = "approved"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_Decision_Rejected" name="No" sourceRef="Gateway_HumanDecision" targetRef="Task_RecordRejection" />
+    <bpmn:sequenceFlow id="Flow_Record_Rejected" sourceRef="Task_RecordRejection" targetRef="End_BusinessRejected" />
+    <bpmn:sequenceFlow id="Flow_Finance_Metrics" sourceRef="Task_UpdateFinance" targetRef="Task_StoreMetrics" />
+    <bpmn:sequenceFlow id="Flow_Metrics_Completed" sourceRef="Task_StoreMetrics" targetRef="End_Completed" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_InvoiceApproval">
+    <bpmndi:BPMNPlane id="BPMNPlane_InvoiceApproval" bpmnElement="invoice-approval">
+      <bpmndi:BPMNShape id="Start_InvoiceReceived_di" bpmnElement="Start_InvoiceReceived"><dc:Bounds x="160" y="262" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Extract_di" bpmnElement="Task_Extract"><dc:Bounds x="240" y="240" width="120" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Validate_di" bpmnElement="Task_Validate"><dc:Bounds x="410" y="240" width="130" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Boundary_ValidationFailed_di" bpmnElement="Boundary_ValidationFailed"><dc:Bounds x="457" y="302" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Classify_di" bpmnElement="Task_Classify"><dc:Bounds x="590" y="240" width="130" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_LowConfidence_di" bpmnElement="Gateway_LowConfidence" isMarkerVisible="true"><dc:Bounds x="770" y="255" width="50" height="50" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_HumanApproval_di" bpmnElement="Task_HumanApproval"><dc:Bounds x="860" y="100" width="120" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Boundary_HumanEscalation_di" bpmnElement="Boundary_HumanEscalation"><dc:Bounds x="902" y="162" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_EscalateReview_di" bpmnElement="Task_EscalateReview"><dc:Bounds x="1030" y="40" width="120" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_EscalationSent_di" bpmnElement="End_EscalationSent"><dc:Bounds x="1200" y="62" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_HumanDecision_di" bpmnElement="Gateway_HumanDecision" isMarkerVisible="true"><dc:Bounds x="1035" y="255" width="50" height="50" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_RecordRejection_di" bpmnElement="Task_RecordRejection"><dc:Bounds x="860" y="400" width="120" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_BusinessRejected_di" bpmnElement="End_BusinessRejected"><dc:Bounds x="1037" y="422" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_UpdateFinance_di" bpmnElement="Task_UpdateFinance"><dc:Bounds x="1150" y="240" width="120" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_StoreMetrics_di" bpmnElement="Task_StoreMetrics"><dc:Bounds x="1320" y="240" width="140" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_Completed_di" bpmnElement="End_Completed"><dc:Bounds x="1510" y="262" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_Start_Extract_di" bpmnElement="Flow_Start_Extract"><di:waypoint x="196" y="280" /><di:waypoint x="240" y="280" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Extract_Validate_di" bpmnElement="Flow_Extract_Validate"><di:waypoint x="360" y="280" /><di:waypoint x="410" y="280" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Validate_Classify_di" bpmnElement="Flow_Validate_Classify"><di:waypoint x="540" y="280" /><di:waypoint x="590" y="280" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ValidationFailed_Record_di" bpmnElement="Flow_ValidationFailed_Record"><di:waypoint x="475" y="338" /><di:waypoint x="475" y="440" /><di:waypoint x="860" y="440" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Classify_Confidence_di" bpmnElement="Flow_Classify_Confidence"><di:waypoint x="720" y="280" /><di:waypoint x="770" y="280" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Confidence_Human_di" bpmnElement="Flow_Confidence_Human"><di:waypoint x="795" y="255" /><di:waypoint x="795" y="140" /><di:waypoint x="860" y="140" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Confidence_Auto_di" bpmnElement="Flow_Confidence_Auto"><di:waypoint x="820" y="280" /><di:waypoint x="1150" y="280" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Human_Decision_di" bpmnElement="Flow_Human_Decision"><di:waypoint x="980" y="140" /><di:waypoint x="1060" y="140" /><di:waypoint x="1060" y="255" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Timer_Escalate_di" bpmnElement="Flow_Timer_Escalate"><di:waypoint x="920" y="162" /><di:waypoint x="920" y="80" /><di:waypoint x="1030" y="80" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Escalate_End_di" bpmnElement="Flow_Escalate_End"><di:waypoint x="1150" y="80" /><di:waypoint x="1200" y="80" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Decision_Approved_di" bpmnElement="Flow_Decision_Approved"><di:waypoint x="1085" y="280" /><di:waypoint x="1150" y="280" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Decision_Rejected_di" bpmnElement="Flow_Decision_Rejected"><di:waypoint x="1060" y="305" /><di:waypoint x="1060" y="440" /><di:waypoint x="980" y="440" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Record_Rejected_di" bpmnElement="Flow_Record_Rejected"><di:waypoint x="980" y="440" /><di:waypoint x="1037" y="440" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Finance_Metrics_di" bpmnElement="Flow_Finance_Metrics"><di:waypoint x="1270" y="280" /><di:waypoint x="1320" y="280" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Metrics_Completed_di" bpmnElement="Flow_Metrics_Completed"><di:waypoint x="1460" y="280" /><di:waypoint x="1510" y="280" /></bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

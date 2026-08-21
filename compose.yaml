@@ -1,0 +1,143 @@
+name: invoice-workflow-agent
+
+services:
+  camunda-data-init:
+    image: camunda/camunda:${CAMUNDA_VERSION:-8.9.16}
+    user: "0:0"
+    entrypoint:
+      - /bin/sh
+      - -c
+      - chown -R 1001:1001 /usr/local/camunda/camunda-data && chmod 775 /usr/local/camunda/camunda-data
+    volumes:
+      - camunda-secondary-data:/usr/local/camunda/camunda-data
+    restart: "no"
+
+  orchestration:
+    image: camunda/camunda:${CAMUNDA_VERSION:-8.9.16}
+    ports:
+      - "26500:26500"
+      - "8088:8080"
+      - "9600:9600"
+    environment:
+      JAVA_TOOL_OPTIONS: "-XX:+PrintFlagsFinal"
+    mem_limit: 1g
+    restart: on-failure
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - 'bash -c ''exec 3<>/dev/tcp/127.0.0.1/9600 && echo -e "GET /actuator/health/status HTTP/1.1\r\nHost: localhost\r\n\r\n" >&3 && head -n 1 <&3'''
+      interval: 2s
+      timeout: 2s
+      retries: 30
+      start_period: 30s
+    volumes:
+      - camunda-primary-data:/usr/local/camunda/data
+      - camunda-secondary-data:/usr/local/camunda/camunda-data
+      - ./infra/camunda/application.yaml:/usr/local/camunda/config/application.yaml:ro
+    depends_on:
+      camunda-data-init:
+        condition: service_completed_successfully
+
+  postgres:
+    image: postgres:${POSTGRES_VERSION:-17-alpine}
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-invoice_workflow}
+      POSTGRES_USER: ${POSTGRES_USER:-invoice_app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-invoice_dev}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    restart: unless-stopped
+
+  invoice-api:
+    build:
+      context: .
+      dockerfile: services/Dockerfile
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://invoice_app:invoice_dev@postgres:5432/invoice_workflow
+      CAMUNDA_REST_URL: http://orchestration:8080/v2
+    depends_on:
+      postgres:
+        condition: service_healthy
+      orchestration:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  finance-mock:
+    build:
+      context: .
+      dockerfile: services/Dockerfile
+    command: uvicorn finance_mock.main:app --host 0.0.0.0 --port 8001
+    ports:
+      - "8001:8001"
+    environment:
+      DATABASE_URL: postgresql://invoice_app:invoice_dev@postgres:5432/invoice_workflow
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  invoice-workers:
+    build:
+      context: .
+      dockerfile: services/Dockerfile
+    command: python -m workers.main
+    environment:
+      DATABASE_URL: postgresql://invoice_app:invoice_dev@postgres:5432/invoice_workflow
+      ZEEBE_HOST: orchestration
+      ZEEBE_PORT: "26500"
+      FINANCE_URL: http://finance-mock:8001
+      HUMAN_REVIEW_WEBHOOK_URL: http://n8n:5678/webhook/human-review
+    depends_on:
+      postgres:
+        condition: service_healthy
+      orchestration:
+        condition: service_healthy
+      finance-mock:
+        condition: service_healthy
+
+  n8n:
+    build:
+      context: ./n8n
+    ports:
+      - "5678:5678"
+    environment:
+      N8N_HOST: n8n
+      N8N_PORT: "5678"
+      N8N_PROTOCOL: http
+      N8N_ENCRYPTION_KEY: invoice-workflow-demo-encryption-key
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_PERSONALIZATION_ENABLED: "false"
+      N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["test -f /home/node/.n8n/.invoice-workflows-imported || (n8n import:workflow --input=/workflows/invoice-intake.json && n8n import:workflow --input=/workflows/human-review-notification.json && sqlite3 /home/node/.n8n/database.sqlite 'UPDATE workflow_entity SET active = 1;' && touch /home/node/.n8n/.invoice-workflows-imported); exec n8n start"]
+    volumes:
+      - n8n-data:/home/node/.n8n
+      - ./n8n:/workflows:ro
+    depends_on:
+      invoice-api:
+        condition: service_healthy
+
+volumes:
+  camunda-primary-data:
+  camunda-secondary-data:
+  postgres-data:
+  n8n-data:

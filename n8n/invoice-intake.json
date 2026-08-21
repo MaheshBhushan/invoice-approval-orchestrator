@@ -1,0 +1,12 @@
+{
+  "name": "Invoice intake webhook",
+  "nodes": [
+    {"parameters":{"httpMethod":"POST","path":"invoice-intake","responseMode":"responseNode"},"id":"1","name":"Invoice received","type":"n8n-nodes-base.webhook","typeVersion":2,"position":[0,0],"webhookId":"invoice-intake"},
+    {"parameters":{"method":"POST","url":"http://invoice-api:8000/invoices","sendHeaders":true,"specifyHeaders":"keypair","headerParameters":{"parameters":[{"name":"Idempotency-Key","value":"={{ $json.body.idempotency_key }}"}]},"sendBody":true,"contentType":"json","specifyBody":"json","jsonBody":"={{ JSON.stringify($json.body) }}","options":{}},"id":"2","name":"Start invoice workflow","type":"n8n-nodes-base.httpRequest","typeVersion":4.2,"position":[240,0]},
+    {"parameters":{"respondWith":"json","responseBody":"={{ JSON.stringify($json) }}","options":{}},"id":"3","name":"Return intake result","type":"n8n-nodes-base.respondToWebhook","typeVersion":1.1,"position":[480,0]}
+  ],
+  "connections":{"Invoice received":{"main":[[{"node":"Start invoice workflow","type":"main","index":0}]]},"Start invoice workflow":{"main":[[{"node":"Return intake result","type":"main","index":0}]]}},
+  "active": true,
+  "settings": {"executionOrder":"v1"},
+  "versionId": "1"
+}

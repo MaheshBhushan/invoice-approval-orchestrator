@@ -1,0 +1,13 @@
+.env
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+dist/
+build/
+*.egg-info/
+coverage.xml
+.coverage
+docker-compose.override.yml
+benchmark/results-*.json
+*.log
