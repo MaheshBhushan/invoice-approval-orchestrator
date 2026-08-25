@@ -1,0 +1,84 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orchestration
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: orchestration
+  template:
+    metadata:
+      labels:
+        app: orchestration
+    spec:
+      initContainers:
+        - name: data-permissions
+          image: {{ .Values.camunda.image }}
+          command: [/bin/sh, -c, "chown -R 1001:1001 /usr/local/camunda/camunda-data && chmod 775 /usr/local/camunda/camunda-data"]
+          securityContext:
+            runAsUser: 0
+          volumeMounts:
+            - name: secondary-data
+              mountPath: /usr/local/camunda/camunda-data
+      containers:
+        - name: camunda
+          image: {{ .Values.camunda.image }}
+          env:
+            - name: JAVA_TOOL_OPTIONS
+              value: -XX:+PrintFlagsFinal
+          ports:
+            - name: zeebe
+              containerPort: 26500
+            - name: http
+              containerPort: 8080
+            - name: management
+              containerPort: 9600
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/status
+              port: management
+            initialDelaySeconds: 30
+            periodSeconds: 2
+            timeoutSeconds: 2
+            failureThreshold: 30
+          resources:
+            limits:
+              memory: 1Gi
+          volumeMounts:
+            - name: primary-data
+              mountPath: /usr/local/camunda/data
+            - name: secondary-data
+              mountPath: /usr/local/camunda/camunda-data
+            - name: config
+              mountPath: /usr/local/camunda/config/application.yaml
+              subPath: application.yaml
+              readOnly: true
+      volumes:
+        - name: primary-data
+          persistentVolumeClaim:
+            claimName: camunda-primary-data
+        - name: secondary-data
+          persistentVolumeClaim:
+            claimName: camunda-secondary-data
+        - name: config
+          configMap:
+            name: camunda-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: orchestration
+spec:
+  selector:
+    app: orchestration
+  ports:
+    - name: zeebe
+      port: 26500
+      targetPort: zeebe
+    - name: http
+      port: 8080
+      targetPort: http
+    - name: management
+      port: 9600
+      targetPort: management

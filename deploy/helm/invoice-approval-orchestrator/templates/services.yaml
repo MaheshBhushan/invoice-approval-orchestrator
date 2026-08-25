@@ -1,0 +1,130 @@
+{{- $image := printf "%s:%s" .Values.image.repository .Values.image.tag -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: invoice-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: invoice-api
+  template:
+    metadata:
+      labels:
+        app: invoice-api
+    spec:
+      containers:
+        - name: invoice-api
+          image: {{ $image }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: [uvicorn, api.main:app, --host, 0.0.0.0, --port, "8000"]
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: postgres
+                  key: DATABASE_URL
+            - name: CAMUNDA_REST_URL
+              value: http://orchestration:8080/v2
+          ports:
+            - name: http
+              containerPort: 8000
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: invoice-api
+spec:
+  selector:
+    app: invoice-api
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: finance-mock
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: finance-mock
+  template:
+    metadata:
+      labels:
+        app: finance-mock
+    spec:
+      containers:
+        - name: finance-mock
+          image: {{ $image }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: [uvicorn, finance_mock.main:app, --host, 0.0.0.0, --port, "8001"]
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: postgres
+                  key: DATABASE_URL
+          ports:
+            - name: http
+              containerPort: 8001
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: finance-mock
+spec:
+  selector:
+    app: finance-mock
+  ports:
+    - name: http
+      port: 8001
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: invoice-workers
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: invoice-workers
+  template:
+    metadata:
+      labels:
+        app: invoice-workers
+    spec:
+      containers:
+        - name: invoice-workers
+          image: {{ $image }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: [python, -m, workers.main]
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: postgres
+                  key: DATABASE_URL
+            - name: ZEEBE_HOST
+              value: orchestration
+            - name: ZEEBE_PORT
+              value: "26500"
+            - name: FINANCE_URL
+              value: http://finance-mock:8001
