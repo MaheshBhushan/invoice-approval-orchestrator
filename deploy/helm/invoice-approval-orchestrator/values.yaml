@@ -1,0 +1,16 @@
+image:
+  repository: invoice-approval-orchestrator
+  tag: local
+  pullPolicy: IfNotPresent
+
+postgres:
+  image: postgres:17-alpine
+  database: invoice_workflow
+  user: invoice_app
+  password: invoice_dev
+  storage: 1Gi
+
+camunda:
+  image: camunda/camunda:8.9.16
+  primaryStorage: 1Gi
+  secondaryStorage: 1Gi
