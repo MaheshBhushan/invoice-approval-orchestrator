@@ -39,7 +39,7 @@ The checked-in [benchmark/results.md](benchmark/results.md) records a 100-invoic
 
 ## Repository map
 
-`bpmn/` executable Camunda process · `services/` FastAPI, workers, agent, and finance adapter · `db/` PostgreSQL schema and seeds · `n8n/` importable workflows · `tests/` unit and integration tests · `scripts/` demo, recovery, and benchmark commands · `docs/` architecture and deployment notes.
+`bpmn/` executable Camunda process · `services/` FastAPI, workers, agent, and finance adapter · `db/` PostgreSQL schema and seeds · `n8n/` importable workflows · `deploy/helm/` Kubernetes deployment · `tests/` unit and integration tests · `scripts/` demo, recovery, and benchmark commands · `docs/` architecture and deployment notes.
 
 ## Limitations
 
@@ -47,7 +47,7 @@ This is a reference implementation: invoice extraction uses supplied structured 
 
 ## CI and deployment
 
-GitHub Actions runs Python syntax checks, unit tests, BPMN XML validation, Compose validation, and the application image build. See [docs/deployment.md](docs/deployment.md) for the local setup and a Camunda SaaS/container deployment path. No live public endpoint is claimed by this repository.
+The Helm chart deploys the FastAPI service, workers, finance mock, PostgreSQL, and Camunda with configuration, Secrets, Services, and persistent volumes. GitHub Actions runs Python syntax checks, unit tests, BPMN XML validation, Compose validation, and image builds, then creates a kind cluster, loads the application image, and verifies `helm install` on every push and pull request. See [docs/deployment.md](docs/deployment.md) for Compose and kind instructions, access commands, and deployment limits. No live public endpoint is claimed by this repository.
 
 ## License
 
