@@ -22,3 +22,19 @@ jobs:
         run: docker compose config -q
       - name: Build application image
         run: docker build -f services/Dockerfile .
+
+  kubernetes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v5
+      - name: Create kind cluster
+        uses: helm/kind-action@v1.14.0
+        with:
+          cluster_name: invoice-approval
+      - name: Build and load application image
+        run: |
+          docker build -t invoice-approval-orchestrator:ci -f services/Dockerfile .
+          kind load docker-image invoice-approval-orchestrator:ci --name invoice-approval
+      - name: Install Helm chart
+        run: helm install invoice-approval deploy/helm/invoice-approval-orchestrator --set image.tag=ci
