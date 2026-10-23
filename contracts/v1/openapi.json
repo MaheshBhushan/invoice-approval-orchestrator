@@ -1,0 +1,91 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Invoice Approval Shared Service API",
+    "version": "1.0.0",
+    "description": "Version 1 contracts for invoice intake and Camunda human review completion."
+  },
+  "paths": {
+    "/invoices": {
+      "post": {
+        "operationId": "submitInvoice",
+        "summary": "Submit an invoice for approval",
+        "servers": [{"url": "http://invoice-api:8000"}],
+        "parameters": [
+          {"name": "Idempotency-Key", "in": "header", "required": false, "schema": {"type": "string"}}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/InvoiceIn"}}}
+        },
+        "responses": {
+          "202": {"description": "Invoice accepted", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/InvoiceAccepted"}}}},
+          "400": {"description": "Idempotency header does not match body"},
+          "409": {"description": "Supplier invoice number already received"},
+          "422": {"description": "Invoice validation failed"},
+          "503": {"description": "Invoice persisted but workflow could not start"}
+        }
+      }
+    },
+    "/v2/user-tasks/{userTaskKey}/completion": {
+      "post": {
+        "operationId": "completeHumanReview",
+        "summary": "Complete an invoice human review task",
+        "servers": [{"url": "http://orchestration:8080"}],
+        "parameters": [
+          {"name": "userTaskKey", "in": "path", "required": true, "schema": {"type": "string"}}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HumanReviewCompletion"}}}
+        },
+        "responses": {"204": {"description": "Review decision accepted"}}
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "InvoiceIn": {
+        "type": "object",
+        "required": ["idempotency_key", "supplier_code", "purchase_order_number", "supplier_invoice_number", "invoice_date", "currency", "net_amount", "tax_amount", "total_amount"],
+        "properties": {
+          "idempotency_key": {"type": "string", "minLength": 1, "maxLength": 255},
+          "supplier_code": {"type": "string"},
+          "purchase_order_number": {"type": "string"},
+          "supplier_invoice_number": {"type": "string"},
+          "invoice_date": {"type": "string", "format": "date"},
+          "currency": {"type": "string", "minLength": 3, "maxLength": 3},
+          "net_amount": {"type": "number", "minimum": 0},
+          "tax_amount": {"type": "number", "minimum": 0},
+          "total_amount": {"type": "number", "minimum": 0},
+          "line_notes": {"type": "array", "items": {"type": "string"}, "default": []}
+        }
+      },
+      "InvoiceAccepted": {
+        "type": "object",
+        "required": ["invoice_id", "process_instance_key", "reused", "status"],
+        "properties": {
+          "invoice_id": {"type": "string", "format": "uuid"},
+          "process_instance_key": {"type": ["string", "integer", "null"]},
+          "reused": {"type": "boolean"},
+          "status": {"type": "string", "enum": ["RECEIVED"]}
+        }
+      },
+      "HumanReviewCompletion": {
+        "type": "object",
+        "required": ["variables"],
+        "properties": {
+          "variables": {
+            "type": "object",
+            "required": ["human_decision", "reviewer_id"],
+            "properties": {
+              "human_decision": {"type": "string", "enum": ["approved", "rejected"]},
+              "reviewer_id": {"type": "string", "minLength": 1},
+              "rejection_reason": {"type": ["string", "null"]}
+            }
+          }
+        }
+      }
+    }
+  }
+}

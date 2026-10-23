@@ -22,6 +22,8 @@ docker compose up -d --build --wait
 
 Open <http://localhost:8000/docs> for the REST API, <http://localhost:8088> for Camunda, and <http://localhost:5678> for n8n. Seeded scenarios include a valid invoice, unknown supplier, PO amount mismatch, and an ambiguous surcharge. The ambiguous case appears as a Camunda human task; approve or reject it in Tasklist and inspect the resulting audit event in PostgreSQL.
 
+The shared version 1 OpenAPI contract is served at <http://localhost:8000/api/v1/openapi.json>. It covers `POST /invoices` and Camunda's user-task completion operation. Consumer request examples live under `contracts/consumers/`; run `python3 tests/test_contracts.py` to validate both fixtures and check changes against the frozen v1 compatibility baseline. Breaking changes require a new contract version.
+
 Run all integration tests with `./scripts/test.sh`. The intake endpoint accepts `POST /invoices` and an `Idempotency-Key`; replaying the same key returns the original process instance.
 
 ## Reliability and explainability

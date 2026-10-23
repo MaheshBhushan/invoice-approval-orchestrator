@@ -1,0 +1,23 @@
+{
+  "consumer": "finance-operations",
+  "requests": {
+    "submitInvoice": {
+      "idempotency_key": "finance-2026-775",
+      "supplier_code": "SUP-002",
+      "purchase_order_number": "PO-2001",
+      "supplier_invoice_number": "FIN-OPS-775",
+      "invoice_date": "2026-10-21",
+      "currency": "EUR",
+      "net_amount": 2113.45,
+      "tax_amount": 401.55,
+      "total_amount": 2515
+    },
+    "completeHumanReview": {
+      "variables": {
+        "human_decision": "rejected",
+        "reviewer_id": "finance-approver-17",
+        "rejection_reason": "Supporting documentation is missing"
+      }
+    }
+  }
+}

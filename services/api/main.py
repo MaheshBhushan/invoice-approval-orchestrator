@@ -1,7 +1,9 @@
+import json
 import os
 import uuid
 from datetime import date
 from decimal import Decimal
+from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, Header, HTTPException, status
@@ -12,7 +14,15 @@ from common.db import audit, connection, json_value
 
 CAMUNDA_REST_URL = os.getenv("CAMUNDA_REST_URL", "http://orchestration:8080/v2")
 CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", "0.80"))
-app = FastAPI(title="Invoice workflow intake")
+app = FastAPI(title="Invoice workflow intake", openapi_url="/api/v1/openapi.json")
+
+
+def versioned_openapi():
+    contract = Path(__file__).resolve().parents[2] / "contracts/v1/openapi.json"
+    return json.loads(contract.read_text())
+
+
+app.openapi = versioned_openapi
 
 
 class InvoiceIn(BaseModel):

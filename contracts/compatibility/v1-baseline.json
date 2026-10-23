@@ -1,0 +1,40 @@
+{
+  "InvoiceIn": {
+    "required": ["idempotency_key", "supplier_code", "purchase_order_number", "supplier_invoice_number", "invoice_date", "currency", "net_amount", "tax_amount", "total_amount"],
+    "properties": {
+      "idempotency_key": {"type": "string", "minLength": 1, "maxLength": 255},
+      "supplier_code": {"type": "string"},
+      "purchase_order_number": {"type": "string"},
+      "supplier_invoice_number": {"type": "string"},
+      "invoice_date": {"type": "string", "format": "date"},
+      "currency": {"type": "string", "minLength": 3, "maxLength": 3},
+      "net_amount": {"type": "number", "minimum": 0},
+      "tax_amount": {"type": "number", "minimum": 0},
+      "total_amount": {"type": "number", "minimum": 0},
+      "line_notes": {"type": "array", "items": {"type": "string"}, "default": []}
+    }
+  },
+  "InvoiceAccepted": {
+    "required": ["invoice_id", "process_instance_key", "reused", "status"],
+    "properties": {
+      "invoice_id": {"type": "string", "format": "uuid"},
+      "process_instance_key": {"type": ["string", "integer", "null"]},
+      "reused": {"type": "boolean"},
+      "status": {"type": "string", "enum": ["RECEIVED"]}
+    }
+  },
+  "HumanReviewCompletion": {
+    "required": ["variables"],
+    "properties": {
+      "variables": {
+        "type": "object",
+        "required": ["human_decision", "reviewer_id"],
+        "properties": {
+          "human_decision": {"type": "string", "enum": ["approved", "rejected"]},
+          "reviewer_id": {"type": "string", "minLength": 1},
+          "rejection_reason": {"type": ["string", "null"]}
+        }
+      }
+    }
+  }
+}
