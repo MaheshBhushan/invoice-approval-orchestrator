@@ -35,6 +35,16 @@ Run all integration tests with `./scripts/test.sh`. The intake endpoint accepts 
 - PostgreSQL stores invoice state, append-only audit events, process metrics, and finance postings.
 - Human approval records reviewer identity and rejection reason.
 
+## Data quality statistics
+
+`db/init/003_data_quality.sql` creates the `data_quality` schema with descriptive SQL views:
+
+- `missing_field_summary`: missing or empty intake fields and unresolved supplier or purchase order references.
+- `discrepancy_summary`: invoice counts per validation failure or agent discrepancy category.
+- `processing_delay_summary`: delay buckets with average, p50, p95 and maximum delay plus retry totals.
+
+Each summary has a matching `*_findings` view with one row per source invoice, and every summary row carries `invoice_ids` (and `source_event_id` for validation categories) so a statistic traces back to its input records. Run `./scripts/test_data_quality.sh` to check the views against a throwaway PostgreSQL container.
+
 ## Benchmark
 
 The checked-in [benchmark/results.md](benchmark/results.md) records a 100-invoice run: 100/100 completed, 5.61 s mean completion latency, 90% straight-through processing, 10% human review, 10 duplicate deliveries prevented, and 100% classification accuracy. The run used deterministic seeded data and recorded zero transient retries, so it is a demonstration benchmark rather than a production capacity claim. Re-run it with `python scripts/benchmark.py` against the running stack.

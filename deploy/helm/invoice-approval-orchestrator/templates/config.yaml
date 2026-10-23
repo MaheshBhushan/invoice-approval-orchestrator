@@ -18,6 +18,8 @@ data:
 {{ .Files.Get "files/db/001_schema.sql" | indent 4 }}
   002_seed.sql: |
 {{ .Files.Get "files/db/002_seed.sql" | indent 4 }}
+  003_data_quality.sql: |
+{{ .Files.Get "files/db/003_data_quality.sql" | indent 4 }}
 ---
 apiVersion: v1
 kind: ConfigMap
