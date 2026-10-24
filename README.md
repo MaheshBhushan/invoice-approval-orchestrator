@@ -45,6 +45,17 @@ Run all integration tests with `./scripts/test.sh`. The intake endpoint accepts 
 
 Each summary has a matching `*_findings` view with one row per source invoice, and every summary row carries `invoice_ids` (and `source_event_id` for validation categories) so a statistic traces back to its input records. Run `./scripts/test_data_quality.sh` to check the views against a throwaway PostgreSQL container.
 
+## Source-to-target reconciliation
+
+`db/init/004_reconciliation.sql` creates the `reconciliation` schema. It compares each intake payload (`invoices.raw_payload`) with the persisted invoice columns, resolved supplier and purchase order, and `finance_postings`:
+
+- `attribute_checks`: one row per invoice and required attribute with result `matched`, `missing_source`, `missing_target` or `value_mismatch`.
+- `rejected_records`: every non-matching attribute plus `POSTED` invoices without a posting and postings on non-`POSTED` invoices.
+- `attribute_coverage` and `coverage_report`: matched ratios per attribute and reconciled, rejected and posted invoice counts.
+- `publishable_results` and `publish_results()`: downstream consumers read only reconciled postings, and `publish_results()` raises while any rejected record exists.
+
+Run `./scripts/test_reconciliation.sh` to check the views against a throwaway PostgreSQL container.
+
 ## Benchmark
 
 The checked-in [benchmark/results.md](benchmark/results.md) records a 100-invoice run: 100/100 completed, 5.61 s mean completion latency, 90% straight-through processing, 10% human review, 10 duplicate deliveries prevented, and 100% classification accuracy. The run used deterministic seeded data and recorded zero transient retries, so it is a demonstration benchmark rather than a production capacity claim. Re-run it with `python scripts/benchmark.py` against the running stack.

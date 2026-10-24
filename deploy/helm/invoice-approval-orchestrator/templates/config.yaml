@@ -20,6 +20,8 @@ data:
 {{ .Files.Get "files/db/002_seed.sql" | indent 4 }}
   003_data_quality.sql: |
 {{ .Files.Get "files/db/003_data_quality.sql" | indent 4 }}
+  004_reconciliation.sql: |
+{{ .Files.Get "files/db/004_reconciliation.sql" | indent 4 }}
 ---
 apiVersion: v1
 kind: ConfigMap
