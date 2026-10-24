@@ -1,0 +1,37 @@
+# Always use with --project-name invoice-recovery, never with the demo project.
+# Compose 2.24.4+ supports !override. Ports bind only to random loopback ports.
+services:
+  postgres:
+    ports: !override []
+  orchestration:
+    ports: !override
+      - "127.0.0.1::8080"
+  invoice-api:
+    ports: !override
+      - "127.0.0.1::8000"
+  finance-mock:
+    ports: !override []
+  invoice-workers:
+    environment:
+      FINANCE_URL: http://finance-fault-proxy:8002
+      FINANCE_TIMEOUT_SECONDS: "0.5"
+      FINANCE_JOB_TIMEOUT_MS: "2000"
+      HUMAN_REVIEW_WEBHOOK_URL: ""
+    depends_on:
+      finance-fault-proxy:
+        condition: service_healthy
+  finance-fault-proxy:
+    image: python:3.12-slim
+    command: python -u /harness/recovery_proxy.py
+    volumes:
+      - ./scripts/recovery_proxy.py:/harness/recovery_proxy.py:ro
+    ports:
+      - "127.0.0.1::8002"
+    depends_on:
+      finance-mock:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/events')"]
+      interval: 2s
+      timeout: 2s
+      retries: 20

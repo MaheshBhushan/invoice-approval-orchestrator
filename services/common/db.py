@@ -30,6 +30,8 @@ def audit(conn, invoice_id, event_type, actor_type="SYSTEM", actor_id=None, deta
 
 
 def begin_attempt(conn, invoice_id, step, process_instance_key=None):
+    # Serialize attempt allocation across workers for this invoice.
+    conn.execute("SELECT invoice_id FROM invoices WHERE invoice_id = %s FOR UPDATE", (invoice_id,))
     row = conn.execute(
         "SELECT COALESCE(MAX(attempt_number), 0) + 1 AS attempt_number "
         "FROM processing_attempts WHERE invoice_id = %s AND step = %s",

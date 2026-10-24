@@ -56,6 +56,13 @@ Each summary has a matching `*_findings` view with one row per source invoice, a
 
 Run `./scripts/test_reconciliation.sh` to check the views against a throwaway PostgreSQL container.
 
+## Recovery and load testing
+
+The [recovery and load harness](docs/recovery-load.md) exercises worker kills after
+finance commit, delayed responses, connection drops, and concurrent duplicate
+deliveries in an isolated Docker project. It verifies final state, posting
+uniqueness, retry accounting, and audit integrity.
+
 ## Benchmark
 
 The checked-in [benchmark/results.md](benchmark/results.md) records a 100-invoice run: 100/100 completed, 5.61 s mean completion latency, 90% straight-through processing, 10% human review, 10 duplicate deliveries prevented, and 100% classification accuracy. The run used deterministic seeded data and recorded zero transient retries, so it is a demonstration benchmark rather than a production capacity claim. Re-run it with `python scripts/benchmark.py` against the running stack.

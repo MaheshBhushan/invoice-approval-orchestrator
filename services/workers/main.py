@@ -12,6 +12,8 @@ from common.db import audit, begin_attempt, connection, finish_attempt
 ZEEBE_HOST = os.getenv("ZEEBE_HOST", "orchestration")
 ZEEBE_PORT = int(os.getenv("ZEEBE_PORT", "26500"))
 FINANCE_URL = os.getenv("FINANCE_URL", "http://finance-mock:8001")
+FINANCE_TIMEOUT_SECONDS = float(os.getenv("FINANCE_TIMEOUT_SECONDS", "10"))
+FINANCE_JOB_TIMEOUT_MS = int(os.getenv("FINANCE_JOB_TIMEOUT_MS", "10000"))
 HUMAN_REVIEW_WEBHOOK_URL = os.getenv("HUMAN_REVIEW_WEBHOOK_URL")
 
 
@@ -22,9 +24,10 @@ def invoice_row(conn, invoice_id):
     return row
 
 
-def record_retryable(invoice_id, step, exc):
+def record_retryable(invoice_id, step, exc, attempt=None):
     with connection() as conn:
-        attempt = begin_attempt(conn, invoice_id, step)
+        if attempt is None:
+            attempt = begin_attempt(conn, invoice_id, step)
         finish_attempt(conn, invoice_id, step, attempt, "RETRYABLE_FAILURE", "TECHNICAL_FAILURE", str(exc))
         audit(conn, invoice_id, "STEP_RETRYABLE_FAILURE", details={"step": step, "error": str(exc)})
         conn.commit()
@@ -171,33 +174,40 @@ async def record_rejection(invoice_id: str, human_decision: str | None = None, r
     return {"invoice_rejected": True}
 
 
-@worker.task(task_type="invoice.update-finance")
+@worker.task(task_type="invoice.update-finance", timeout_ms=FINANCE_JOB_TIMEOUT_MS)
 async def update_finance(invoice_id: str, human_decision: str | None = None, reviewer_id: str | None = None):
     step = "invoice.update-finance"
+    committed_attempt = None
     try:
         with connection() as conn:
             attempt = begin_attempt(conn, invoice_id, step)
             invoice = invoice_row(conn, invoice_id)
-            conn.execute("UPDATE invoices SET status = 'POSTING', updated_at = now() WHERE invoice_id = %s", (invoice_id,))
+            conn.execute("UPDATE invoices SET status = 'POSTING', updated_at = now() WHERE invoice_id = %s AND status <> 'POSTED'", (invoice_id,))
             if human_decision == "approved":
                 audit(conn, invoice_id, "INVOICE_APPROVED", "HUMAN", reviewer_id,
                       {"human_decision": human_decision})
             conn.commit()
+            committed_attempt = attempt
         response = httpx.post(
             f"{FINANCE_URL}/postings",
             json={"invoice_id": invoice_id, "amount": float(invoice["total_amount"]), "currency": invoice["currency"]},
-            headers={"Idempotency-Key": f"invoice:{invoice_id}"}, timeout=10,
+            headers={"Idempotency-Key": f"invoice:{invoice_id}"}, timeout=FINANCE_TIMEOUT_SECONDS,
         )
         response.raise_for_status()
         result = response.json()
         with connection() as conn:
-            conn.execute("UPDATE invoices SET status = 'POSTED', updated_at = now() WHERE invoice_id = %s", (invoice_id,))
+            # Concurrent deliveries can all receive the reused posting; only the first records the transition.
+            posted = conn.execute(
+                "UPDATE invoices SET status = 'POSTED', updated_at = now() WHERE invoice_id = %s AND status <> 'POSTED' "
+                "RETURNING invoice_id", (invoice_id,),
+            ).fetchone()
             finish_attempt(conn, invoice_id, step, attempt, "SUCCEEDED")
-            audit(conn, invoice_id, "FINANCE_POSTED", details=result)
+            if posted:
+                audit(conn, invoice_id, "FINANCE_POSTED", details=result)
             conn.commit()
         return {"finance_reference": result["external_reference"]}
     except Exception as exc:
-        record_retryable(invoice_id, step, exc)
+        record_retryable(invoice_id, step, exc, committed_attempt)
         raise
 
 
