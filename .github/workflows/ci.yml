@@ -12,10 +12,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Install OCR tools
+        run: sudo apt-get update && sudo apt-get install -y tesseract-ocr poppler-utils
       - name: Install dependencies
         run: python -m pip install -r services/requirements.txt
       - name: Python syntax and unit tests
-        run: PYTHONPATH=services python -m compileall -q services tests scripts && PYTHONPATH=services pytest -q tests/test_classifier.py tests/test_recovery.py
+        run: PYTHONPATH=services python -m compileall -q services tests scripts && PYTHONPATH=services pytest -q tests/test_classifier.py tests/test_recovery.py tests/test_ocr.py
       - name: Validate BPMN XML
         run: python -c "import xml.etree.ElementTree as ET; ET.parse('bpmn/invoice-approval.bpmn')"
       - name: Validate Compose configuration

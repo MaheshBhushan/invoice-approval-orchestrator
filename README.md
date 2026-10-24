@@ -26,6 +26,14 @@ The shared version 1 OpenAPI contract is served at <http://localhost:8000/api/v1
 
 Run all integration tests with `./scripts/test.sh`. The intake endpoint accepts `POST /invoices` and an `Idempotency-Key`; replaying the same key returns the original process instance.
 
+## Scanned PDF intake (OCR)
+
+`POST /invoices/scan` accepts a scanned invoice as a raw `application/pdf` body. `services/common/ocr.py` rasterises each page with `pdftoppm`, reads it with Tesseract, and records the mean word confidence. An LLM schema extractor then maps the OCR text onto the invoice fields through a forced `record_invoice` tool call with a JSON schema and per-field confidence. Set `ANTHROPIC_API_KEY` (and optionally `OCR_EXTRACTION_MODEL`) to enable it; without a key, a regular-expression extractor reads labelled fields so the demo runs offline.
+
+Deterministic checks reject missing fields, unparseable dates or amounts, and totals that do not add up. The intake confidence is the lower of the OCR and extraction confidence. Extractions below `OCR_CONFIDENCE_THRESHOLD` (default `0.80`) or with any issue are stored with `ocr_extraction.requires_human_review` in the raw payload, and the classifier returns `low_confidence_extraction` with `human_review`, so the existing Camunda human task handles them. Incomplete extractions that fail the intake schema return `422` with the extraction for manual entry. The idempotency key defaults to the SHA-256 of the PDF.
+
+`python3 scripts/benchmark.py --scanned` renders every benchmark invoice as a PDF scan, submits it through the OCR step, and writes `benchmark/results-scanned.{json,md}` with OCR intake latency, mean OCR confidence, extracted field accuracy, and the low-confidence review rate. `tests/test_ocr.py` covers extraction, the human-review route, the LLM tool contract, and the endpoint; it needs `tesseract` and `pdftoppm` locally.
+
 ## Reliability and explainability
 
 - Camunda service jobs use durable retries for transient worker and finance failures.

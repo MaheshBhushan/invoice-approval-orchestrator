@@ -3,6 +3,7 @@ import argparse
 import json
 import statistics
 import subprocess
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -11,16 +12,18 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "services"))
 API_URL = "http://localhost:8000"
 CAMUNDA_URL = "http://localhost:8088"
 
 
-def request(method, url, body):
+def request(method, url, body, headers=None):
+    data = body if isinstance(body, bytes) else json.dumps(body).encode()
     req = urllib.request.Request(
         url,
-        data=json.dumps(body).encode(),
+        data=data,
         method=method,
-        headers={"Content-Type": "application/json"},
+        headers=headers or {"Content-Type": "application/json"},
     )
     with urllib.request.urlopen(req, timeout=15) as response:
         return json.load(response) if response.length != 0 else {}
@@ -113,15 +116,43 @@ def database_rows(run_id):
     )
 
 
+def query_payload(invoice_id):
+    return query_json(f"SELECT raw_payload FROM invoices WHERE invoice_id = '{invoice_id}'")
+
+
 def percentile(values, fraction):
     ordered = sorted(values)
     return ordered[min(len(ordered) - 1, int(len(ordered) * fraction))]
 
 
-def write_results(result):
+def submit_scanned(invoice):
+    """Render the invoice as a scanned PDF and send it through the OCR intake step."""
+    from common.ocr import render_invoice_pdf
+
+    pdf = render_invoice_pdf(invoice)
+    started = time.monotonic()
+    response = request(
+        "POST",
+        f"{API_URL}/invoices/scan",
+        pdf,
+        {"Content-Type": "application/pdf", "Idempotency-Key": invoice["idempotency_key"]},
+    )
+    response["intake_ms"] = (time.monotonic() - started) * 1000
+    return response
+
+
+def field_accuracy(invoice, payload):
+    fields = ["supplier_code", "purchase_order_number", "supplier_invoice_number", "invoice_date", "currency"]
+    matched = sum(payload.get(field) == invoice[field] for field in fields)
+    for field in ("net_amount", "tax_amount", "total_amount"):
+        matched += payload.get(field) is not None and float(payload[field]) == float(invoice[field])
+    return matched / (len(fields) + 3)
+
+
+def write_results(result, name="results"):
     output = ROOT / "benchmark"
     output.mkdir(exist_ok=True)
-    (output / "results.json").write_text(json.dumps(result, indent=2) + "\n")
+    (output / f"{name}.json").write_text(json.dumps(result, indent=2) + "\n")
     metrics = result["metrics"]
     markdown = f"""# Invoice workflow benchmark
 
@@ -138,16 +169,33 @@ Run `{result['run_id']}` processed {result['invoice_count']} invoices on {result
 | Duplicate deliveries prevented | {metrics['duplicates_prevented']} |
 | Durable retries recorded | {metrics['retries']} |
 | Classification accuracy | {metrics['classification_accuracy']:.1%} |
-
+{ocr_rows(metrics.get('ocr_intake'))}
 Ground truth is deterministic seeded data: exact PO match, 19% amount mismatch, and ambiguous surcharge.
 """
-    (output / "results.md").write_text(markdown)
+    (output / f"{name}.md").write_text(markdown)
+
+
+def ocr_rows(ocr):
+    if not ocr:
+        return ""
+    return (
+        f"| OCR intake mean latency | {ocr['latency_ms']['mean']:.2f} ms |\n"
+        f"| OCR intake p95 latency | {ocr['latency_ms']['p95']:.2f} ms |\n"
+        f"| Mean OCR confidence | {ocr['mean_ocr_confidence']:.3f} |\n"
+        f"| Extracted field accuracy | {ocr['field_accuracy']:.1%} |\n"
+        f"| Low-confidence extractions sent to review | {ocr['low_confidence_rate']:.1%} |\n"
+    )
 
 
 def main():
     parser = argparse.ArgumentParser(description="Benchmark the executable invoice workflow")
     parser.add_argument("--count", type=int, default=100)
     parser.add_argument("--timeout", type=int, default=120)
+    parser.add_argument(
+        "--scanned",
+        action="store_true",
+        help="submit rendered PDF scans through POST /invoices/scan (OCR intake) instead of JSON payloads",
+    )
     args = parser.parse_args()
     if args.count < 100:
         parser.error("--count must be at least 100 for a verifiable benchmark")
@@ -159,12 +207,17 @@ def main():
     expected = {}
     process_keys = set()
     submitted = []
+    extractions = []
     started = time.monotonic()
     for index in range(args.count):
         bucket = index % 10
         case = "no_discrepancy" if bucket < 7 else "amount_mismatch" if bucket < 9 else "ambiguous_discrepancy"
         invoice = make_invoice(run_id, index, case)
-        response = request("POST", f"{API_URL}/invoices", invoice)
+        if args.scanned:
+            response = submit_scanned(invoice)
+            extractions.append((invoice, response))
+        else:
+            response = request("POST", f"{API_URL}/invoices", invoice)
         expected[response["invoice_id"]] = case
         process_keys.add(str(response["process_instance_key"]))
         submitted.append(invoice)
@@ -185,7 +238,8 @@ def main():
 
     duplicates_prevented = 0
     for invoice in submitted[::10]:
-        if request("POST", f"{API_URL}/invoices", invoice)["reused"]:
+        replay = submit_scanned(invoice) if args.scanned else request("POST", f"{API_URL}/invoices", invoice)
+        if replay["reused"]:
             duplicates_prevented += 1
 
     latencies = [float(row["latency_ms"]) for row in rows]
@@ -214,7 +268,24 @@ def main():
             "classification_accuracy": correct / args.count,
         },
     }
-    write_results(result)
+    if args.scanned:
+        intake_ms = [response["intake_ms"] for _, response in extractions]
+        result["metrics"]["ocr_intake"] = {
+            "latency_ms": {
+                "mean": round(statistics.mean(intake_ms), 2),
+                "p50": round(statistics.median(intake_ms), 2),
+                "p95": round(percentile(intake_ms, 0.95), 2),
+            },
+            "mean_ocr_confidence": round(
+                statistics.mean(r["extraction"]["ocr_confidence"] for _, r in extractions), 3
+            ),
+            "field_accuracy": statistics.mean(
+                field_accuracy(invoice, query_payload(r["invoice_id"])) for invoice, r in extractions
+            ),
+            "low_confidence_rate": sum(r["extraction"]["requires_human_review"] for _, r in extractions)
+            / len(extractions),
+        }
+    write_results(result, "results-scanned" if args.scanned else "results")
     print(json.dumps(result, indent=2))
 
 

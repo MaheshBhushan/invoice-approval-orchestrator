@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import uuid
@@ -6,8 +7,11 @@ from decimal import Decimal
 from pathlib import Path
 
 import httpx
-from fastapi import FastAPI, Header, HTTPException, status
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from fastapi import FastAPI, Header, HTTPException, Request, status
+from fastapi.concurrency import run_in_threadpool
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+
+from common import ocr
 
 from common.db import audit, connection, json_value
 
@@ -59,7 +63,30 @@ def health():
 def receive_invoice(invoice: InvoiceIn, idempotency_key: str | None = Header(default=None, alias="Idempotency-Key")):
     if idempotency_key and idempotency_key != invoice.idempotency_key:
         raise HTTPException(status_code=400, detail="Idempotency-Key header must match body")
+    return start_invoice(invoice)
+
+
+@app.post("/invoices/scan", status_code=status.HTTP_202_ACCEPTED)
+async def receive_scanned_invoice(request: Request, idempotency_key: str | None = Header(default=None, alias="Idempotency-Key")):
+    """Accept a scanned PDF invoice, read it with OCR, and start the workflow with the extracted fields."""
+    pdf = await request.body()
+    if not pdf.startswith(b"%PDF"):
+        raise HTTPException(status_code=415, detail="request body must be a PDF document")
+    key = idempotency_key or f"scan-{hashlib.sha256(pdf).hexdigest()}"
+    result = await run_in_threadpool(ocr.intake, pdf)
+    try:
+        invoice = InvoiceIn(idempotency_key=key, **result["payload"])
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail={"message": "scanned invoice could not be extracted",
+                                                      "extraction": result["extraction"], "payload": result["payload"]}) from exc
+    response = start_invoice(invoice, result["extraction"])
+    return {**response, "extraction": result["extraction"]}
+
+
+def start_invoice(invoice: InvoiceIn, extraction: dict | None = None):
     payload = invoice.model_dump(mode="json")
+    if extraction:
+        payload["ocr_extraction"] = extraction
     with connection() as conn:
         existing = conn.execute(
             "SELECT invoice_id, status FROM invoices WHERE idempotency_key = %s", (invoice.idempotency_key,)
@@ -85,7 +112,7 @@ def receive_invoice(invoice: InvoiceIn, idempotency_key: str | None = Header(def
             if "invoices_supplier_id_supplier_invoice_number_key" in str(exc):
                 raise HTTPException(status_code=409, detail="supplier invoice number already received") from exc
             raise
-        audit(conn, invoice_id, "INVOICE_RECEIVED", details={"idempotency_key": invoice.idempotency_key})
+        audit(conn, invoice_id, "INVOICE_RECEIVED", details={"idempotency_key": invoice.idempotency_key, "ocr_extraction": extraction})
         conn.execute("INSERT INTO process_metrics (invoice_id, started_at) VALUES (%s, now())", (invoice_id,))
         conn.commit()
     try:

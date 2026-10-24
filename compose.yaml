@@ -66,6 +66,9 @@ services:
     environment:
       DATABASE_URL: postgresql://invoice_app:invoice_dev@postgres:5432/invoice_workflow
       CAMUNDA_REST_URL: http://orchestration:8080/v2
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OCR_EXTRACTION_MODEL: ${OCR_EXTRACTION_MODEL:-claude-haiku-5-5}
+      OCR_CONFIDENCE_THRESHOLD: ${OCR_CONFIDENCE_THRESHOLD:-0.80}
     depends_on:
       postgres:
         condition: service_healthy

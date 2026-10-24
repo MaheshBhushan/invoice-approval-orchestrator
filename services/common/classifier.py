@@ -14,6 +14,17 @@ def classify(state: AgentState) -> AgentState:
     """Deterministic demo classifier; an LLM adapter can replace this node without changing routing."""
     invoice = state["invoice"]
     po = state["purchase_order"]
+    extraction = invoice.get("ocr_extraction") or {}
+    if extraction.get("requires_human_review"):
+        return {"decision": {
+            "classification": "low_confidence_extraction",
+            "severity": "medium",
+            "confidence": float(extraction.get("confidence", 0.0)),
+            "recommended_action": "human_review",
+            "evidence": [f"ocr.confidence={extraction.get('ocr_confidence')}",
+                         f"extraction.confidence={extraction.get('extraction_confidence')}", *extraction.get("issues", [])],
+            "explanation": "Fields read from the scanned invoice are not reliable enough to post without review.",
+        }}
     notes = " ".join(invoice.get("line_notes", [])).lower()
     total = float(invoice["total_amount"])
     po_total = float(po["total_amount"])
