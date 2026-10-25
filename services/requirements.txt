@@ -6,3 +6,4 @@ langgraph>=0.2,<1
 pyzeebe>=4.6,<5
 pytest>=8,<9
 pillow>=10.1,<14
+scikit-learn>=1.4,<2

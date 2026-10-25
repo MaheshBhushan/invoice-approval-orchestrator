@@ -43,6 +43,12 @@ Deterministic checks reject missing fields, unparseable dates or amounts, and to
 - PostgreSQL stores invoice state, append-only audit events, process metrics, and finance postings.
 - Human approval records reviewer identity and rejection reason.
 
+## Random Forest baseline and Azure DevOps work items
+
+`services/common/rf_baseline.py` trains a scikit-learn `RandomForestClassifier` beside the LangGraph agent. It uses five tabular features: absolute and signed PO variance ratio, a verbal-agreement note flag, a note-present flag, and the OCR review flag. The training set is seeded synthetic data labelled by the deterministic classifier rules, so the baseline measures how well a tabular model recovers those rules. The worker records the prediction, class probabilities, and agreement with the agent as a `BASELINE_CLASSIFIED` audit event. The baseline never overrides the agent decision.
+
+When the agent confidence falls below the process threshold (0.80 by default), `services/common/azure_devops.py` creates an Azure DevOps Boards work item through the Work Items REST API (`POST {org}/{project}/_apis/wit/workitems/$Task?api-version=7.1` with a JSON Patch body). Set `AZURE_DEVOPS_ORG_URL`, `AZURE_DEVOPS_PROJECT`, and `AZURE_DEVOPS_PAT` to enable it; `AZURE_DEVOPS_WORK_ITEM_TYPE` overrides `Task`. The worker records `AZURE_DEVOPS_WORK_ITEM_CREATED` with the work item ID and URL. Failures go to the retryable error log and do not block the workflow. The tests cover the request shape with a mock transport; they do not call a live Azure DevOps organisation.
+
 ## Data quality statistics
 
 `db/init/003_data_quality.sql` creates the `data_quality` schema with descriptive SQL views:

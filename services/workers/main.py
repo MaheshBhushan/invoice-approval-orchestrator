@@ -5,6 +5,7 @@ import httpx
 from pyzeebe import ZeebeWorker, create_insecure_channel
 from pyzeebe.errors import BusinessError
 
+from common import azure_devops, rf_baseline
 from common.classifier import GRAPH
 from common.db import audit, begin_attempt, connection, finish_attempt
 
@@ -115,6 +116,7 @@ async def classify_discrepancy(invoice_id: str, confidence_threshold: float = 0.
                     "explanation": "The agent returned an invalid structured decision; human review is required.",
                 }
             requires_human = decision["confidence"] < float(confidence_threshold) or decision["recommended_action"] == "human_review"
+            baseline = rf_baseline.compare(decision, rf_baseline.predict(payload, po))
             conn.execute(
                 """UPDATE invoices SET status = 'PENDING_APPROVAL', agent_classification = %s,
                    agent_confidence = %s, agent_explanation = %s, updated_at = now() WHERE invoice_id = %s""",
@@ -124,6 +126,7 @@ async def classify_discrepancy(invoice_id: str, confidence_threshold: float = 0.
                 conn.execute("UPDATE invoices SET status = 'CLASSIFIED' WHERE invoice_id = %s", (invoice_id,))
             finish_attempt(conn, invoice_id, step, attempt, "SUCCEEDED")
             audit(conn, invoice_id, "AGENT_CLASSIFIED", "AGENT", "langgraph", decision)
+            audit(conn, invoice_id, "BASELINE_CLASSIFIED", "SYSTEM", "random_forest", baseline)
             conn.commit()
         if requires_human and HUMAN_REVIEW_WEBHOOK_URL:
             try:
@@ -138,6 +141,14 @@ async def classify_discrepancy(invoice_id: str, confidence_threshold: float = 0.
                     conn.commit()
             except Exception as exc:
                 record_retryable(invoice_id, "invoice.notify-human-review", exc)
+        if decision["confidence"] < float(confidence_threshold) and azure_devops.configured():
+            try:
+                work_item = azure_devops.create_work_item(invoice_id, payload, decision, baseline)
+                with connection() as conn:
+                    audit(conn, invoice_id, "AZURE_DEVOPS_WORK_ITEM_CREATED", details=work_item)
+                    conn.commit()
+            except Exception as exc:
+                record_retryable(invoice_id, "invoice.create-azure-devops-work-item", exc)
         return {
             "agent_confidence": decision["confidence"], "agent_requires_human": requires_human,
             "agent_decision": decision, "supplier_code": payload["supplier_code"],

@@ -109,6 +109,9 @@ services:
       ZEEBE_PORT: "26500"
       FINANCE_URL: http://finance-mock:8001
       HUMAN_REVIEW_WEBHOOK_URL: http://n8n:5678/webhook/human-review
+      AZURE_DEVOPS_ORG_URL: ${AZURE_DEVOPS_ORG_URL:-}
+      AZURE_DEVOPS_PROJECT: ${AZURE_DEVOPS_PROJECT:-}
+      AZURE_DEVOPS_PAT: ${AZURE_DEVOPS_PAT:-}
     depends_on:
       postgres:
         condition: service_healthy
