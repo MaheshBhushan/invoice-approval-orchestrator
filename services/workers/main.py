@@ -5,7 +5,7 @@ import httpx
 from pyzeebe import ZeebeWorker, create_insecure_channel
 from pyzeebe.errors import BusinessError
 
-from common import azure_devops, rf_baseline
+from common import azure_devops, rf_baseline, tracing
 from common.classifier import GRAPH
 from common.db import audit, begin_attempt, connection, finish_attempt
 
@@ -34,6 +34,7 @@ def record_retryable(invoice_id, step, exc, attempt=None):
         conn.commit()
 
 
+tracing.configure("invoice-workers")
 loop = asyncio.new_event_loop()
 asyncio.set_event_loop(loop)
 channel = create_insecure_channel(f"{ZEEBE_HOST}:{ZEEBE_PORT}")
@@ -41,6 +42,7 @@ worker = ZeebeWorker(channel)
 
 
 @worker.task(task_type="invoice.extract")
+@tracing.traced_step("invoice.extract")
 async def extract(invoice_id: str):
     step = "invoice.extract"
     try:
@@ -58,6 +60,7 @@ async def extract(invoice_id: str):
 
 
 @worker.task(task_type="invoice.validate")
+@tracing.traced_step("invoice.validate")
 async def validate(invoice_id: str):
     step = "invoice.validate"
     try:
@@ -98,6 +101,7 @@ async def validate(invoice_id: str):
 
 
 @worker.task(task_type="invoice.classify-discrepancy")
+@tracing.traced_step("invoice.classify-discrepancy")
 async def classify_discrepancy(invoice_id: str, confidence_threshold: float = 0.8):
     step = "invoice.classify-discrepancy"
     try:
@@ -106,7 +110,7 @@ async def classify_discrepancy(invoice_id: str, confidence_threshold: float = 0.
             invoice = invoice_row(conn, invoice_id)
             payload = invoice["raw_payload"]
             po = conn.execute("SELECT * FROM purchase_orders WHERE po_number = %s", (payload["purchase_order_number"],)).fetchone()
-            decision = GRAPH.invoke({"invoice": payload, "purchase_order": po, "validation": {}}).get("decision")
+            decision = GRAPH.invoke({"invoice": {**payload, "invoice_id": invoice_id}, "purchase_order": po, "validation": {}}).get("decision")
             required = {"classification", "severity", "confidence", "recommended_action", "evidence", "explanation"}
             valid = isinstance(decision, dict) and required <= decision.keys() and isinstance(decision["confidence"], (float, int)) and 0 <= decision["confidence"] <= 1
             if not valid:
@@ -162,6 +166,7 @@ async def classify_discrepancy(invoice_id: str, confidence_threshold: float = 0.
 
 
 @worker.task(task_type="invoice.escalate-review")
+@tracing.traced_step("invoice.escalate-review")
 async def escalate_review(invoice_id: str):
     with connection() as conn:
         attempt = begin_attempt(conn, invoice_id, "invoice.escalate-review")
@@ -172,6 +177,7 @@ async def escalate_review(invoice_id: str):
 
 
 @worker.task(task_type="invoice.record-rejection")
+@tracing.traced_step("invoice.record-rejection")
 async def record_rejection(invoice_id: str, human_decision: str | None = None, reviewer_id: str | None = None,
                            rejection_reason: str | None = None, validation_error: str | None = None):
     with connection() as conn:
@@ -186,6 +192,7 @@ async def record_rejection(invoice_id: str, human_decision: str | None = None, r
 
 
 @worker.task(task_type="invoice.update-finance", timeout_ms=FINANCE_JOB_TIMEOUT_MS)
+@tracing.traced_step("invoice.update-finance")
 async def update_finance(invoice_id: str, human_decision: str | None = None, reviewer_id: str | None = None):
     step = "invoice.update-finance"
     committed_attempt = None
@@ -223,6 +230,7 @@ async def update_finance(invoice_id: str, human_decision: str | None = None, rev
 
 
 @worker.task(task_type="invoice.store-metrics")
+@tracing.traced_step("invoice.store-metrics")
 async def store_metrics(invoice_id: str, agent_requires_human: bool = False):
     with connection() as conn:
         attempt = begin_attempt(conn, invoice_id, "invoice.store-metrics")

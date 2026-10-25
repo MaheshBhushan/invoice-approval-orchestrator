@@ -7,3 +7,5 @@ pyzeebe>=4.6,<5
 pytest>=8,<9
 pillow>=10.1,<14
 scikit-learn>=1.4,<2
+opentelemetry-sdk>=1.27,<2
+opentelemetry-exporter-otlp-proto-http>=1.27,<2

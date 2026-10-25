@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "services"))
 API_URL = "http://localhost:8000"
 CAMUNDA_URL = "http://localhost:8088"
+JAEGER_URL = "http://localhost:16686"
 
 
 def request(method, url, body, headers=None):
@@ -149,6 +150,31 @@ def field_accuracy(invoice, payload):
     return matched / (len(fields) + 3)
 
 
+def trace_completeness(invoice_ids, timeout=30):
+    """Fetch each invoice trace from Jaeger and report invoices whose trace lacks a required span."""
+    from common.tracing import invoice_trace_id, jaeger_span_names, missing_spans
+
+    pending = {invoice_id: list(missing_spans([])) for invoice_id in invoice_ids}
+    deadline = time.monotonic() + timeout
+    while pending and time.monotonic() < deadline:
+        for invoice_id in list(pending):
+            try:
+                with urllib.request.urlopen(f"{JAEGER_URL}/api/traces/{invoice_trace_id(invoice_id)}", timeout=5) as response:
+                    pending[invoice_id] = missing_spans(jaeger_span_names(json.load(response)))
+            except urllib.error.HTTPError as exc:
+                if exc.code != 404:
+                    raise
+            if not pending[invoice_id]:
+                del pending[invoice_id]
+        if pending:
+            time.sleep(1)
+    return {
+        "complete_traces": len(invoice_ids) - len(pending),
+        "incomplete_traces": len(pending),
+        "missing_spans": {invoice_id: names for invoice_id, names in list(pending.items())[:10]},
+    }
+
+
 def write_results(result, name="results"):
     output = ROOT / "benchmark"
     output.mkdir(exist_ok=True)
@@ -195,6 +221,11 @@ def main():
         "--scanned",
         action="store_true",
         help="submit rendered PDF scans through POST /invoices/scan (OCR intake) instead of JSON payloads",
+    )
+    parser.add_argument(
+        "--assert-traces",
+        action="store_true",
+        help="fail unless Jaeger holds a complete OpenTelemetry trace for every benchmark invoice",
     )
     args = parser.parse_args()
     if args.count < 100:
@@ -285,8 +316,12 @@ def main():
             "low_confidence_rate": sum(r["extraction"]["requires_human_review"] for _, r in extractions)
             / len(extractions),
         }
+    if args.assert_traces:
+        result["metrics"]["tracing"] = trace_completeness(list(expected))
     write_results(result, "results-scanned" if args.scanned else "results")
     print(json.dumps(result, indent=2))
+    if args.assert_traces and result["metrics"]["tracing"]["incomplete_traces"]:
+        raise SystemExit(f"incomplete traces: {result['metrics']['tracing']['missing_spans']}")
 
 
 if __name__ == "__main__":

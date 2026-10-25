@@ -112,13 +112,25 @@ services:
       AZURE_DEVOPS_ORG_URL: ${AZURE_DEVOPS_ORG_URL:-}
       AZURE_DEVOPS_PROJECT: ${AZURE_DEVOPS_PROJECT:-}
       AZURE_DEVOPS_PAT: ${AZURE_DEVOPS_PAT:-}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      OTEL_SERVICE_NAME: invoice-workers
     depends_on:
+      jaeger:
+        condition: service_started
       postgres:
         condition: service_healthy
       orchestration:
         condition: service_healthy
       finance-mock:
         condition: service_healthy
+
+  jaeger:
+    image: jaegertracing/all-in-one:${JAEGER_VERSION:-1.62.0}
+    ports:
+      - "16686:16686"
+      - "4318:4318"
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
 
   n8n:
     build:

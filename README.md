@@ -77,6 +77,12 @@ finance commit, delayed responses, connection drops, and concurrent duplicate
 deliveries in an isolated Docker project. It verifies final state, posting
 uniqueness, retry accounting, and audit integrity.
 
+## Agent tracing (OpenTelemetry + Jaeger)
+
+Each Camunda worker step and the LangGraph `agent.classify` node emit an OpenTelemetry span with the invoice ID, step inputs, latency, agent confidence, classification, model, and token usage. The deterministic classifier reports zero tokens; an LLM adapter can return a `usage` dict on its decision. Zeebe does not propagate trace context between jobs, so `services/common/tracing.py` derives each trace ID from the invoice ID and every step joins one trace per invoice.
+
+`docker compose up` starts Jaeger at http://localhost:16686, and the workers export over OTLP/HTTP to `jaeger:4318`. Tracing is off when `OTEL_EXPORTER_OTLP_ENDPOINT` is unset. `python scripts/benchmark.py --assert-traces` fetches every invoice trace from Jaeger and fails if any trace lacks a required span. CI runs `tests/test_tracing.py`, an offline 100-invoice run that asserts one complete trace per invoice.
+
 ## Benchmark
 
 The checked-in [benchmark/results.md](benchmark/results.md) records a 100-invoice run: 100/100 completed, 5.61 s mean completion latency, 90% straight-through processing, 10% human review, 10 duplicate deliveries prevented, and 100% classification accuracy. The run used deterministic seeded data and recorded zero transient retries, so it is a demonstration benchmark rather than a production capacity claim. Re-run it with `python scripts/benchmark.py` against the running stack.

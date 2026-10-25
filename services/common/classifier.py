@@ -2,6 +2,8 @@ from typing import TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
+from common.tracing import record_agent_decision, step_span
+
 
 class AgentState(TypedDict, total=False):
     invoice: dict
@@ -11,6 +13,17 @@ class AgentState(TypedDict, total=False):
 
 
 def classify(state: AgentState) -> AgentState:
+    invoice = state["invoice"]
+    with step_span("agent.classify", invoice.get("invoice_id", "unknown"),
+                   **{"input.total_amount": invoice.get("total_amount"),
+                      "input.purchase_order_total": state["purchase_order"].get("total_amount"),
+                      "input.line_notes": invoice.get("line_notes", [])}) as span:
+        result = _classify(state)
+        record_agent_decision(span, result["decision"])
+        return result
+
+
+def _classify(state: AgentState) -> AgentState:
     """Deterministic demo classifier; an LLM adapter can replace this node without changing routing."""
     invoice = state["invoice"]
     po = state["purchase_order"]
