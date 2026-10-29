@@ -1,0 +1,126 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "$connections": {
+      "type": "Object",
+      "defaultValue": {}
+    },
+    "ApiBaseUrl": {
+      "type": "String"
+    },
+    "ApiToken": {
+      "type": "SecureString"
+    },
+    "ReviewerEmail": {
+      "type": "String"
+    }
+  },
+  "triggers": {
+    "Every_minute": {
+      "type": "Recurrence",
+      "recurrence": {
+        "frequency": "Minute",
+        "interval": 1
+      },
+      "runtimeConfiguration": {
+        "concurrency": {
+          "runs": 1,
+          "maximumWaitingRuns": 1
+        }
+      }
+    }
+  },
+  "actions": {
+    "Pending": {
+      "type": "Http",
+      "inputs": {
+        "method": "GET",
+        "uri": "@concat(parameters('ApiBaseUrl'), '/approvals/pending')",
+        "headers": {
+          "Authorization": "@concat('Bearer ', parameters('ApiToken'))"
+        }
+      },
+      "runAfter": {},
+      "runtimeConfiguration": {
+        "secureData": {
+          "properties": [
+            "inputs",
+            "outputs"
+          ]
+        }
+      }
+    },
+    "Review_each": {
+      "type": "Foreach",
+      "foreach": "@body('Pending')?['items']",
+      "runAfter": {
+        "Pending": [
+          "Succeeded"
+        ]
+      },
+      "runtimeConfiguration": {
+        "concurrency": {
+          "repetitions": 1
+        }
+      },
+      "actions": {
+        "Human_approval": {
+          "type": "OpenApiConnectionWebhook",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_approvals",
+              "connectionName": "shared_approvals",
+              "operationId": "StartAndWaitForAnApproval"
+            },
+            "parameters": {
+              "approvalType": "Basic",
+              "WebhookApprovalCreationInput/title": "@concat('Review invoice ', items('Review_each')?['invoice_number'])",
+              "WebhookApprovalCreationInput/assignedTo": "@parameters('ReviewerEmail')",
+              "WebhookApprovalCreationInput/details": "@concat('Invoice ID: ', items('Review_each')?['invoice_id'], '\nAmount: ', items('Review_each')?['amount'], ' ', items('Review_each')?['currency'], '\nAI explanation: ', items('Review_each')?['explanation'])"
+            }
+          },
+          "runAfter": {}
+        },
+        "Record_response": {
+          "type": "Http",
+          "inputs": {
+            "method": "POST",
+            "uri": "@concat(parameters('ApiBaseUrl'), '/approvals/', items('Review_each')?['invoice_id'], '/response')",
+            "headers": {
+              "Authorization": "@concat('Bearer ', parameters('ApiToken'))",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "task_key": "@items('Review_each')?['task_key']",
+              "decision": "@if(equals(outputs('Human_approval')?['body/outcome'], 'Approve'), 'approved', 'rejected')",
+              "reviewer_id": "@first(outputs('Human_approval')?['body/responses'])?['responder']?['email']",
+              "reason": "@coalesce(first(outputs('Human_approval')?['body/responses'])?['comments'], '')"
+            },
+            "retryPolicy": {
+              "type": "exponential",
+              "count": 8,
+              "interval": "PT10S",
+              "minimumInterval": "PT10S",
+              "maximumInterval": "PT1M"
+            }
+          },
+          "runAfter": {
+            "Human_approval": [
+              "Succeeded"
+            ]
+          },
+          "runtimeConfiguration": {
+            "secureData": {
+              "properties": [
+                "inputs",
+                "outputs"
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  "outputs": {}
+}

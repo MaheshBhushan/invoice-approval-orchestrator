@@ -26,6 +26,13 @@ spec:
                   key: DATABASE_URL
             - name: CAMUNDA_REST_URL
               value: http://orchestration:8080/v2
+            {{- if .Values.approvals.existingSecret }}
+            - name: APPROVAL_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.approvals.existingSecret }}
+                  key: token
+            {{- end }}
           ports:
             - name: http
               containerPort: 8000

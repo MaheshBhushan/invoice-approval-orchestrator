@@ -41,7 +41,7 @@ services:
   postgres:
     image: postgres:${POSTGRES_VERSION:-17-alpine}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-invoice_workflow}
       POSTGRES_USER: ${POSTGRES_USER:-invoice_app}
@@ -66,6 +66,7 @@ services:
     environment:
       DATABASE_URL: postgresql://invoice_app:invoice_dev@postgres:5432/invoice_workflow
       CAMUNDA_REST_URL: http://orchestration:8080/v2
+      APPROVAL_API_TOKEN: ${APPROVAL_API_TOKEN:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OCR_EXTRACTION_MODEL: ${OCR_EXTRACTION_MODEL:-claude-haiku-5-5}
       OCR_CONFIDENCE_THRESHOLD: ${OCR_CONFIDENCE_THRESHOLD:-0.80}

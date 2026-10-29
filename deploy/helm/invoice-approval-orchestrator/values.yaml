@@ -3,6 +3,9 @@ image:
   tag: local
   pullPolicy: IfNotPresent
 
+approvals:
+  existingSecret: ""
+
 financeService:
   repository: invoice-finance-service
   tag: local

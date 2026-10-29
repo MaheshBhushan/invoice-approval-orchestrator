@@ -11,6 +11,7 @@ from fastapi import FastAPI, Header, HTTPException, Request, status
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
+from api.approvals import router as approvals_router
 from common import ocr
 
 from common.db import audit, connection, json_value
@@ -27,6 +28,7 @@ def versioned_openapi():
 
 
 app.openapi = versioned_openapi
+app.include_router(approvals_router)
 
 
 class InvoiceIn(BaseModel):

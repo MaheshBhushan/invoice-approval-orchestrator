@@ -26,6 +26,14 @@ The shared version 1 OpenAPI contract is served at <http://localhost:8000/api/v1
 
 Run all integration tests with `./scripts/test.sh`. The intake endpoint accepts `POST /invoices` and an `Idempotency-Key`; replaying the same key returns the original process instance.
 
+## Human approval with Power Automate and Teams
+
+Ambiguous invoices can be reviewed from Microsoft Teams instead of Camunda Tasklist. A scheduled Power Automate cloud flow polls `GET /approvals/pending` and runs **Start and wait for an approval**. The Approvals connector delivers that request as an actionable approval card in Teams and Outlook. The flow then posts the decision to `POST /approvals/{invoice_id}/response`. Both routes require a bearer token (`APPROVAL_API_TOKEN`); the adapter returns 503 while it is unset.
+
+PostgreSQL records the first decision and its audit event before the Camunda task is completed. An identical retry returns `reused: true` without a second completion, and a changed decision returns 409. Approval resumes the finance update; rejection follows the rejection branch and creates no posting.
+
+[power-automate/invoice-review.definition.json](power-automate/invoice-review.definition.json) is a reference flow definition, and [docs/power-automate.md](docs/power-automate.md) covers setup. Run `python -u scripts/test-power-automate.py` to exercise the callback contract against the local stack with an ephemeral token. The repository does not include a tenant-exported solution ZIP, and a live Microsoft 365 run has not been verified.
+
 ## Scanned PDF intake (OCR)
 
 `POST /invoices/scan` accepts a scanned invoice as a raw `application/pdf` body. `services/common/ocr.py` rasterises each page with `pdftoppm`, reads it with Tesseract, and records the mean word confidence. An LLM schema extractor then maps the OCR text onto the invoice fields through a forced `record_invoice` tool call with a JSON schema and per-field confidence. Set `ANTHROPIC_API_KEY` (and optionally `OCR_EXTRACTION_MODEL`) to enable it; without a key, a regular-expression extractor reads labelled fields so the demo runs offline.

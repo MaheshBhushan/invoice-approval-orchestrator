@@ -9,5 +9,6 @@ docker compose run --rm --no-deps \
   -e FINANCE_URL=http://finance-service:8001 \
   -e DATABASE_URL=postgresql://invoice_app:invoice_dev@postgres:5432/invoice_workflow \
   -v "$PWD/tests:/app/tests:ro" \
+  -v "$PWD/scripts:/app/scripts:ro" \
   invoice-api pytest -q /app/tests
 ./scripts/demo.sh

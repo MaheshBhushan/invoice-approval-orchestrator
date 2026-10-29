@@ -17,7 +17,7 @@ jobs:
       - name: Install dependencies
         run: python -m pip install -r services/requirements.txt
       - name: Python syntax and unit tests
-        run: PYTHONPATH=services python -m compileall -q services tests scripts && PYTHONPATH=services pytest -q tests/test_classifier.py tests/test_recovery.py tests/test_ocr.py tests/test_rf_baseline.py
+        run: PYTHONPATH=services python -m compileall -q services tests scripts && PYTHONPATH=services pytest -q tests/test_classifier.py tests/test_recovery.py tests/test_ocr.py tests/test_rf_baseline.py tests/test_approval_auth.py
       - name: Assert one complete trace per benchmark invoice
         run: PYTHONPATH=services pytest -q tests/test_tracing.py
       - name: Validate BPMN XML
