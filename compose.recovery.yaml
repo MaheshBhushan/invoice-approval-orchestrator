@@ -9,7 +9,7 @@ services:
   invoice-api:
     ports: !override
       - "127.0.0.1::8000"
-  finance-mock:
+  finance-service:
     ports: !override []
   invoice-workers:
     environment:
@@ -28,7 +28,7 @@ services:
     ports:
       - "127.0.0.1::8002"
     depends_on:
-      finance-mock:
+      finance-service:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/events')"]

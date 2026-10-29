@@ -10,7 +10,7 @@ docker compose up -d --build --wait
 ./scripts/demo.sh
 ```
 
-Services: API <http://localhost:8000/docs>, finance mock <http://localhost:8001/docs>, Camunda <http://localhost:8088>, and n8n <http://localhost:5678>.
+Services: API <http://localhost:8000/docs>, finance service <http://localhost:8001/health>, Camunda <http://localhost:8088>, and n8n <http://localhost:5678>.
 
 Run the integration suite with `./scripts/test.sh`. Stop with `docker compose down`; add `-v` only when intentionally resetting seeded database state.
 
@@ -27,7 +27,7 @@ kind load docker-image invoice-approval-orchestrator:local --name invoice-approv
 helm install invoice-approval deploy/helm/invoice-approval-orchestrator
 ```
 
-The chart creates single-replica deployments for the FastAPI service, workers, finance mock, PostgreSQL, and Camunda. It also creates Services, PostgreSQL and Camunda ConfigMaps, a PostgreSQL Secret, and persistent volume claims for PostgreSQL and Camunda.
+The chart creates single-replica deployments for the FastAPI service, workers, Spring Boot finance service, PostgreSQL, and Camunda. It also creates Services, PostgreSQL and Camunda ConfigMaps, a PostgreSQL Secret, and persistent volume claims for PostgreSQL and Camunda.
 
 Check the installed resources:
 
@@ -39,11 +39,11 @@ Access a service by running the relevant command in a separate terminal:
 
 ```sh
 kubectl port-forward service/invoice-api 8000:8000
-kubectl port-forward service/finance-mock 8001:8001
+kubectl port-forward service/finance-service 8001:8001
 kubectl port-forward service/orchestration 8088:8080
 ```
 
-The API is then available at <http://localhost:8000/docs>, the finance mock at <http://localhost:8001/docs>, and Camunda at <http://localhost:8088>.
+The API is then available at <http://localhost:8000/docs>, the finance service at <http://localhost:8001/health>, and Camunda at <http://localhost:8088>.
 
 Remove the release and cluster when finished:
 
@@ -56,4 +56,4 @@ This chart is a local portfolio deployment, not a production platform. It uses d
 
 ## Deployable path
 
-Camunda can be moved to Camunda 8 SaaS by changing `CAMUNDA_REST_URL` and the Zeebe connection settings in `compose.yaml`. Run the Python API, workers, finance adapter, and PostgreSQL on a managed container platform, keep secrets in its secret store, and replace the finance mock with the customer's REST or UiPath adapter. n8n can be self-hosted or replaced by an existing integration platform. This repository does not claim a live public endpoint.
+Camunda can be moved to Camunda 8 SaaS by changing `CAMUNDA_REST_URL` and the Zeebe connection settings in `compose.yaml`. Run the Python API, workers, finance adapter, and PostgreSQL on a managed container platform, keep secrets in its secret store, and point `FINANCE_URL` at the customer's ledger API or UiPath adapter instead of the Spring Boot finance service. n8n can be self-hosted or replaced by an existing integration platform. This repository does not claim a live public endpoint.

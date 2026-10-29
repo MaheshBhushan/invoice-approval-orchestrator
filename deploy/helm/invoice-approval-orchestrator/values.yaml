@@ -3,6 +3,11 @@ image:
   tag: local
   pullPolicy: IfNotPresent
 
+financeService:
+  repository: invoice-finance-service
+  tag: local
+  pullPolicy: IfNotPresent
+
 postgres:
   image: postgres:17-alpine
   database: invoice_workflow

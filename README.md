@@ -89,15 +89,15 @@ The checked-in [benchmark/results.md](benchmark/results.md) records a 100-invoic
 
 ## Repository map
 
-`bpmn/` executable Camunda process · `services/` FastAPI, workers, agent, and finance adapter · `db/` PostgreSQL schema and seeds · `n8n/` importable workflows · `deploy/helm/` Kubernetes deployment · `tests/` unit and integration tests · `scripts/` demo, recovery, and benchmark commands · `docs/` architecture and deployment notes.
+`bpmn/` executable Camunda process · `services/` FastAPI, workers, agent, and the Spring Boot finance service · `db/` PostgreSQL schema and seeds · `n8n/` importable workflows · `deploy/helm/` Kubernetes deployment · `tests/` unit and integration tests · `scripts/` demo, recovery, and benchmark commands · `docs/` architecture and deployment notes.
 
 ## Limitations
 
-This is a reference implementation: invoice extraction uses supplied structured demo payloads, the finance service is a mock, and authentication, multi-tenancy, production OCR, model monitoring, and accounting-specific compliance controls are not included. A production deployment must add those controls, use managed secrets, replace the finance adapter, and validate retention and approval policy with the accounting owner. UiPath is an adapter extension point, not a required local dependency.
+This is a reference implementation: invoice extraction uses supplied structured demo payloads, the Spring Boot finance service only records postings, and authentication, multi-tenancy, production OCR, model monitoring, and accounting-specific compliance controls are not included. A production deployment must add those controls, use managed secrets, replace the finance adapter, and validate retention and approval policy with the accounting owner. UiPath is an adapter extension point, not a required local dependency.
 
 ## CI and deployment
 
-The Helm chart deploys the FastAPI service, workers, finance mock, PostgreSQL, and Camunda with configuration, Secrets, Services, and persistent volumes. GitHub Actions runs Python syntax checks, unit tests, BPMN XML validation, Compose validation, and image builds, then creates a kind cluster, loads the application image, and verifies `helm install` on every push and pull request. See [docs/deployment.md](docs/deployment.md) for Compose and kind instructions, access commands, and deployment limits. No live public endpoint is claimed by this repository.
+The Helm chart deploys the FastAPI service, workers, Spring Boot finance service, PostgreSQL, and Camunda with configuration, Secrets, Services, and persistent volumes. GitHub Actions runs Python syntax checks, unit tests, finance-service JUnit tests, BPMN XML validation, Compose validation, and image builds, then creates a kind cluster, loads the application image, and verifies `helm install` on every push and pull request. See [docs/deployment.md](docs/deployment.md) for Compose and kind instructions, access commands, and deployment limits. No live public endpoint is claimed by this repository.
 
 ## License
 

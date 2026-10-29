@@ -83,7 +83,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.connection.close()
                 return
             req = urllib.request.Request(
-                "http://finance-mock:8001/postings", data=json.dumps(body).encode(),
+                "http://finance-service:8001/postings", data=json.dumps(body).encode(),
                 headers={"Content-Type": "application/json",
                          "Idempotency-Key": self.headers["Idempotency-Key"]},
             )

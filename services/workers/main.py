@@ -12,7 +12,7 @@ from common.db import audit, begin_attempt, connection, finish_attempt
 
 ZEEBE_HOST = os.getenv("ZEEBE_HOST", "orchestration")
 ZEEBE_PORT = int(os.getenv("ZEEBE_PORT", "26500"))
-FINANCE_URL = os.getenv("FINANCE_URL", "http://finance-mock:8001")
+FINANCE_URL = os.getenv("FINANCE_URL", "http://finance-service:8001")
 FINANCE_TIMEOUT_SECONDS = float(os.getenv("FINANCE_TIMEOUT_SECONDS", "10"))
 FINANCE_JOB_TIMEOUT_MS = int(os.getenv("FINANCE_JOB_TIMEOUT_MS", "10000"))
 HUMAN_REVIEW_WEBHOOK_URL = os.getenv("HUMAN_REVIEW_WEBHOOK_URL")

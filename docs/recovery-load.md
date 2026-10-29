@@ -12,7 +12,7 @@ for this local harness. Run commands from the repository root.
 ## Start and deploy
 
 ```sh
-docker compose --project-name invoice-recovery -f compose.yaml -f compose.recovery.yaml up -d --build postgres orchestration finance-mock finance-fault-proxy invoice-api invoice-workers
+docker compose --project-name invoice-recovery -f compose.yaml -f compose.recovery.yaml up -d --build postgres orchestration finance-service finance-fault-proxy invoice-api invoice-workers
 docker compose --project-name invoice-recovery -f compose.yaml -f compose.recovery.yaml ps
 ```
 
@@ -72,9 +72,11 @@ docker compose --project-name invoice-recovery -f compose.yaml -f compose.recove
   invoice-api pytest -q /app/tests/test_recovery.py /app/tests/test_recovery_db.py /app/tests/test_classifier.py
 ```
 
-The database checks issue concurrent first finance deliveries and concurrent
-attempt allocations. They require one finance reference and contiguous attempt
-numbers. A reused key for another invoice must return HTTP 409. The fast checks
+The database checks issue concurrent attempt allocations and require contiguous
+attempt numbers. The finance-service JUnit suite (`mvn -f
+services/finance-service/pom.xml test`) issues concurrent first finance
+deliveries and requires one finance reference. A reused key for another invoice
+must return HTTP 409. The fast checks
 exercise fault selection and reject deliberately corrupted verifier evidence.
 
 ## Diagnose a failed run

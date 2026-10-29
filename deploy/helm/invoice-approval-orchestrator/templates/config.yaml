@@ -8,6 +8,7 @@ stringData:
   POSTGRES_USER: {{ .Values.postgres.user | quote }}
   POSTGRES_PASSWORD: {{ .Values.postgres.password | quote }}
   DATABASE_URL: {{ printf "postgresql://%s:%s@postgres:5432/%s" .Values.postgres.user .Values.postgres.password .Values.postgres.database | quote }}
+  JDBC_URL: {{ printf "jdbc:postgresql://postgres:5432/%s" .Values.postgres.database | quote }}
 ---
 apiVersion: v1
 kind: ConfigMap

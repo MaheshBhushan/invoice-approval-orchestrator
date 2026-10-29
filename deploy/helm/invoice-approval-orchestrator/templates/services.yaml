@@ -52,28 +52,37 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: finance-mock
+  name: finance-service
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: finance-mock
+      app: finance-service
   template:
     metadata:
       labels:
-        app: finance-mock
+        app: finance-service
     spec:
       containers:
-        - name: finance-mock
-          image: {{ $image }}
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
-          command: [uvicorn, finance_mock.main:app, --host, 0.0.0.0, --port, "8001"]
+        - name: finance-service
+          image: {{ printf "%s:%s" .Values.financeService.repository .Values.financeService.tag }}
+          imagePullPolicy: {{ .Values.financeService.pullPolicy }}
           env:
-            - name: DATABASE_URL
+            - name: JDBC_URL
               valueFrom:
                 secretKeyRef:
                   name: postgres
-                  key: DATABASE_URL
+                  key: JDBC_URL
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres
+                  key: POSTGRES_USER
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres
+                  key: POSTGRES_PASSWORD
           ports:
             - name: http
               containerPort: 8001
@@ -88,10 +97,10 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: finance-mock
+  name: finance-service
 spec:
   selector:
-    app: finance-mock
+    app: finance-service
   ports:
     - name: http
       port: 8001
@@ -127,4 +136,4 @@ spec:
             - name: ZEEBE_PORT
               value: "26500"
             - name: FINANCE_URL
-              value: http://finance-mock:8001
+              value: http://finance-service:8001

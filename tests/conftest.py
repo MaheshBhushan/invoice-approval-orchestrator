@@ -13,7 +13,7 @@ CAMUNDA_URL = os.getenv("CAMUNDA_URL", "http://orchestration:8080")
 DATABASE_URL = os.getenv(
     "DATABASE_URL", "postgresql://invoice_app:invoice_dev@postgres:5432/invoice_workflow"
 )
-FINANCE_URL = os.getenv("FINANCE_URL", "http://finance-mock:8001")
+FINANCE_URL = os.getenv("FINANCE_URL", "http://finance-service:8001")
 
 
 @pytest.fixture(scope="session")

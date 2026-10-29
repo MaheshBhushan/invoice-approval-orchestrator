@@ -128,7 +128,7 @@ def main():
     finance_running = True
     original_bpmn = ROOT / "bpmn/invoice-approval.bpmn"
     try:
-        compose("stop", "finance-mock")
+        compose("stop", "finance-service")
         finance_running = False
         transient = submit("transient")
         wait_until(
@@ -136,7 +136,7 @@ def main():
             "a recorded retryable finance failure",
             timeout=30,
         )
-        compose("start", "--wait", "finance-mock")
+        compose("start", "--wait", "finance-service")
         finance_running = True
         wait_until(
             lambda: status(transient["invoice_id"]) == "POSTED",
@@ -160,7 +160,7 @@ def main():
             handle.flush()
             deploy(handle.name)
 
-        compose("stop", "finance-mock")
+        compose("stop", "finance-service")
         finance_running = False
         terminal = submit("terminal")
         incident = wait_until(
@@ -173,7 +173,7 @@ def main():
             f"incident={incident['incidentKey']} type={incident['errorType']}"
         )
 
-        compose("start", "--wait", "finance-mock")
+        compose("start", "--wait", "finance-service")
         finance_running = True
         request(
             "PATCH",
@@ -193,7 +193,7 @@ def main():
         )
     finally:
         if not finance_running:
-            compose("start", "--wait", "finance-mock")
+            compose("start", "--wait", "finance-service")
         deploy(original_bpmn)
 
 
